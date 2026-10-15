@@ -1,5 +1,11 @@
 {
-  "map": {},
+  "map": {
+    "2110818580141068343": {
+      "eventId": "48092caab71363e4b5244c9ab92dc2e42952cb5266946ed2a14490596c3e2360",
+      "rootId": "48092caab71363e4b5244c9ab92dc2e42952cb5266946ed2a14490596c3e2360"
+    }
+  },
   "userId": "2104797547524968448",
-  "baselined": true
+  "baselined": true,
+  "lastId": "2110818580141068343"
 }
