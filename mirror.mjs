@@ -29,6 +29,8 @@ export const CONFIG = {
   repost: env.REPOST === 'true', // with POST_IDS: delete the earlier Nostr copy and post again
   postIds: (env.POST_IDS || '').split(/[\s,]+/).map((v) => (v.match(/(\d{5,})\/?(?:\?.*)?$/) || [])[1]).filter(Boolean), // copy specific posts (IDs or URLs)
   stateFile: env.STATE_FILE || 'state.json',
+  mentionsFile: env.MENTIONS_FILE || 'mentions.json', // X handle -> npub, turned into Nostr mentions
+  mentions: {},
 };
 
 const MAP_LIMIT = 1000; // how many X-id -> Nostr-id pairs to remember (for threading)
@@ -55,6 +57,40 @@ function secretKey() {
   if (k.startsWith('nsec')) return nip19.decode(k).data;
   if (/^[0-9a-f]{64}$/i.test(k)) return Uint8Array.from(Buffer.from(k, 'hex'));
   throw new Error('NOSTR_NSEC must be an nsec1... key or 64-char hex');
+}
+
+// X handle -> npub map (case-insensitive). A bad entry is skipped with a warning, never fatal.
+async function loadMentions() {
+  let raw;
+  try {
+    raw = JSON.parse(await readFile(CONFIG.mentionsFile, 'utf8'));
+  } catch {
+    return {};
+  }
+  const out = {};
+  for (const [handle, npub] of Object.entries(raw)) {
+    try {
+      const d = nip19.decode(String(npub).trim());
+      if (d.type !== 'npub') throw new Error('not an npub');
+      out[handle.replace(/^@/, '').toLowerCase()] = d.data;
+    } catch (e) {
+      console.warn(`mentions.json: skipping @${handle} (${e.message})`);
+    }
+  }
+  return out;
+}
+
+// Swap "@handle" for "nostr:npub1..." (NIP-27) when the handle is in the map, so Nostr apps show a linked
+// name and notify that person. Handles inside links (e.g. medium.com/@x) and e-mail addresses are left alone.
+export function linkMentions(text, mentions = {}) {
+  const pubkeys = [];
+  const out = text.replace(/(?<![\w@/.])@([A-Za-z0-9_]{1,15})(?![A-Za-z0-9_])/g, (whole, handle) => {
+    const hex = mentions[handle.toLowerCase()];
+    if (!hex) return whole;
+    if (!pubkeys.includes(hex)) pubkeys.push(hex);
+    return `nostr:${nip19.npubEncode(hex)}`;
+  });
+  return { text: out, pubkeys };
 }
 
 async function loadState() {
@@ -194,7 +230,9 @@ async function rehost(m, sk) {
   return { url: src.url, fallback: true };
 }
 
-export function buildEvent({ post, text, uploads, thread, pubkey, createdAt }) {
+export function buildEvent({ post, text, uploads, thread, pubkey, createdAt, mentions = CONFIG.mentions }) {
+  const linked = linkMentions(text, mentions);
+  text = linked.text;
   const lines = text ? [text] : [];
   const tags = [];
   for (const { m, up } of uploads) {
@@ -212,6 +250,7 @@ export function buildEvent({ post, text, uploads, thread, pubkey, createdAt }) {
     if (thread.parentId !== thread.rootId) tags.push(['e', thread.parentId, '', 'reply']);
     tags.push(['p', pubkey]);
   }
+  for (const pk of linked.pubkeys) if (!tags.some((t) => t[0] === 'p' && t[1] === pk)) tags.push(['p', pk]);
   const created = createdAt || Math.floor(Date.parse(post.created_at) / 1000) || Math.floor(Date.now() / 1000);
   return { kind: 1, created_at: created, content: lines.join('\n'), tags };
 }
@@ -230,6 +269,7 @@ async function main() {
   const pubkey = getPublicKey(sk);
   const state = await loadState();
   state.map ||= {};
+  CONFIG.mentions = await loadMentions();
   console.log(`Mirroring @${CONFIG.xUsername} -> ${nip19.npubEncode(pubkey)}${CONFIG.dryRun ? ' (DRY RUN)' : ''}`);
 
   if (!state.userId) {

@@ -12,6 +12,7 @@ Copied from the Carla Botcoin mirror (`wclanker/carlabotcoin-nostr-mirror`); the
 - **Images and videos**: downloaded at full quality from X and re-uploaded to Nostr media hosting (Blossom, `blossom.primal.net`), so they show inline in Nostr apps. If re-hosting fails, the note links to the X copy instead.
 - **Threads**: when the account replies to its own post, the Nostr copy is threaded under the earlier note.
 - **Quote posts**: the text plus a link to the quoted post.
+- **@mentions of the hosts**: `@ErikCason` and `@WalkerAmerica` (any capitalisation) become real Nostr mentions (`nostr:npub…` plus a `p` tag), so they show as linked names in Primal and the hosts get notified. The handles and npubs live in `mentions.json`; add a line there to link anyone else. Other @handles, and handles inside links, are left as plain text.
 - **Skipped**: replies to other people and reposts of other people's posts (turn on with the variables below).
 - **Not mirrored**: edits or deletions made on X after a post was copied.
 - **Timestamps**: each note is stamped with the time it's published to Nostr, not the original X time, because Primal doesn't index backdated notes. (`KEEP_ORIGINAL_TIME=true` overrides this; don't use it.)

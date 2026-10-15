@@ -1,6 +1,6 @@
 // Offline checks of the text/media/event transforms against sample X API payloads.
 process.env.DRY_RUN = 'true';
-const { buildText, sourceMedia, buildEvent } = await import('./mirror.mjs');
+const { buildText, sourceMedia, buildEvent, linkMentions } = await import('./mirror.mjs');
 import assert from 'node:assert/strict';
 
 // 1. Photo post with a link: t.co link expanded, media t.co removed, entities decoded
@@ -48,5 +48,18 @@ assert.deepEqual(ev.tags[0], ['imeta', 'url https://blossom.primal.net/abc.jpg',
 assert.ok(ev.tags.some((t) => t[0] === 'e' && t[3] === 'root'));
 assert.ok(ev.tags.some((t) => t[0] === 'e' && t[3] === 'reply'));
 assert.equal(ev.created_at, 1792065600);
+
+// 6. Mentions: mapped @handles become nostr:npub mentions with p tags; others and handles in links stay as they are
+const ERIK = 'bd9eb657c25b4f6cda68871ce26259d1f9bc62420487e3224905b674a710a45a';
+const WALKER = 'c48e29f04b482cc01ca1f9ef8c86ef8318c059e0e9353235162f080f26e14c11';
+const M = { erikcason: ERIK, walkeramerica: WALKER };
+const NE = 'nostr:npub1hk0tv47ztd8kekngsuwwycje68umccjzqjr7xgjfqkm8ffcs53dqvv20pf';
+const NW = 'nostr:npub1cj8znuztfqkvq89pl8hceph0svvvqk0qay6nydgk9uyq7fhpfsgsqwrz4u';
+assert.equal(linkMentions('Live with @ErikCason and @WALKERAMERICA, @ErikCason again.', M).text, `Live with ${NE} and ${NW}, ${NE} again.`);
+assert.deepEqual(linkMentions('@ErikCason @erikcason', M).pubkeys, [ERIK]);
+assert.equal(linkMentions('@ErikCasonX @someoneelse https://medium.com/@erikcason erik@ErikCason.com', M).text, '@ErikCasonX @someoneelse https://medium.com/@erikcason erik@ErikCason.com');
+const mev = buildEvent({ post: photoPost, text: 'Tune in, @WalkerAmerica!', uploads: [], pubkey: 'pk', mentions: M });
+assert.equal(mev.content, `Tune in, ${NW}!`);
+assert.deepEqual(mev.tags.filter((t) => t[0] === 'p'), [['p', WALKER]]);
 
 console.log('All transform checks passed.');
