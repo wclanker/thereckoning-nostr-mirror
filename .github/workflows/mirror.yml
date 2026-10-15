@@ -1,0 +1,65 @@
+name: Mirror X to Nostr
+
+on:
+  schedule:
+    # Every 15 minutes. Free because the repo is public (secrets stay encrypted).
+    # If the repo is ever made private, change this to '*/30 * * * *'.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      post_ids:
+        description: 'Optional: X post links or IDs to copy now (comma-separated), e.g. older posts. Leave blank for a normal run.'
+        required: false
+        default: ''
+      repost:
+        description: 'Post them again even if already copied (removes the earlier Nostr copy)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Mirror new posts
+        run: node mirror.mjs
+        env:
+          X_BEARER_TOKEN: ${{ secrets.X }}
+          NOSTR_NSEC: ${{ secrets.NOSTR }}
+          X_USERNAME: TheReckoning21
+          NOSTR_RELAYS: ${{ vars.NOSTR_RELAYS }}
+          BLOSSOM_SERVERS: ${{ vars.BLOSSOM_SERVERS }}
+          MIRROR_REPLIES: ${{ vars.MIRROR_REPLIES }}
+          MIRROR_RETWEETS: ${{ vars.MIRROR_RETWEETS }}
+          BACKFILL: ${{ vars.BACKFILL }}
+          POST_IDS: ${{ inputs.post_ids }}
+          REPOST: ${{ inputs.repost }}
+          KEEP_ORIGINAL_TIME: ${{ vars.KEEP_ORIGINAL_TIME }}
+
+      - name: Save progress
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "nostr-mirror-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "mirror: update state"
+            git push
+          fi
